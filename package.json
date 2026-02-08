@@ -1,11 +1,11 @@
 {
-  "name": "customer-messaging-platform",
+  "name": "safespace-api",
   "version": "1.0.0",
   "description": "Production-ready customer messaging platform backend",
   "main": "dist/server.js",
   "scripts": {
-    "start": "node dist/server.js",
-    "dev": "nodemon src/server.ts",
+    "start": "node dist/index.js",
+    "dev": "nodemon src/index.ts",
     "build": "tsc",
     "watch": "tsc --watch",
     "lint": "eslint src/**/*.ts",

@@ -7,7 +7,7 @@ import { JWTPayload } from '../types';
 export const initializeSocket = (server: HTTPServer): SocketIOServer => {
   const io = new SocketIOServer(server, {
     cors: {
-      origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
+      origin: 'http://localhost:3000',
       methods: ['GET', 'POST'],
       credentials: true,
     },

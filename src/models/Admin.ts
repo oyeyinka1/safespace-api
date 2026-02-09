@@ -59,8 +59,6 @@ adminSchema.methods.comparePassword = async function (
   }
 };
 
-// Create indexes
-adminSchema.index({ email: 1 });
 
 const Admin: Model<IAdmin> = mongoose.model<IAdmin>('Admin', adminSchema);
 

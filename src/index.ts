@@ -9,6 +9,7 @@ import logger from './utils/logger';
 import { errorHandler, notFound } from './middleware/errorHandler.middleware';
 import { apiLimiter } from './middleware/rateLimiter.middleware';
 import { initializeSocket } from './socket/socketService';
+import { env } from "./config/env"
 
 // Routes
 import authRoutes from './routes/auth.routes';
@@ -42,7 +43,7 @@ app.use(helmet({
 
 app.use(cors({
   origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-  // credentials: true,
+  credentials: true,
 }));
 
 app.use(compression());
@@ -51,7 +52,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Logging middleware
 app.use((req, res, next) => {
-  logger.http(`${req.method} ${req.url}`);
+  logger.http(`${req.method} ${req.url} ${res.statusCode}`);
   next();
 });
 
@@ -72,7 +73,7 @@ app.get('/health', (req, res) => {
 app.get('/', (req, res) => {
   res.status(200).json({
     success: true,
-    message: 'Customer Messaging Platform API',
+    message: 'Safespace API',
     version: '1.0.0',
     endpoints: {
       auth: '/api/auth',
@@ -89,7 +90,7 @@ app.use(notFound);
 app.use(errorHandler);
 
 // Start server
-const PORT = process.env.PORT || 5000;
+const PORT = env.PORT || 5000;
 
 server.listen(PORT, () => {
   logger.info(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);

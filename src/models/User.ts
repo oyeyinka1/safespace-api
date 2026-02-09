@@ -20,7 +20,7 @@ const userSchema = new Schema<IUser>(
       trim: true,
       lowercase: true,
       match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email'],
-      sparse: true, // Allows multiple null values but enforces uniqueness for non-null values
+      unique: true
     },
   },
   {
@@ -30,7 +30,6 @@ const userSchema = new Schema<IUser>(
 
 // Create compound index for phone lookups
 userSchema.index({ phone: 1 });
-userSchema.index({ email: 1 }, { sparse: true });
 
 const User: Model<IUser> = mongoose.model<IUser>('User', userSchema);
 

@@ -1,0 +1,36 @@
+import mongoose, { Schema, Model } from 'mongoose';
+import { IUser } from '../types';
+
+const userSchema = new Schema<IUser>(
+  {
+    name: {
+      type: String,
+      required: [true, 'Name is required'],
+      trim: true,
+      maxlength: [100, 'Name cannot exceed 100 characters'],
+    },
+    phone: {
+      type: String,
+      required: [true, 'Phone is required'],
+      trim: true,
+      match: [/^[\d\s\+\-\(\)]+$/, 'Please provide a valid phone number'],
+    },
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      match: [/^\S+@\S+\.\S+$/, 'Please provide a valid email'],
+      unique: true
+    },
+  },
+  {
+    timestamps: true,
+  }
+);
+
+// Create compound index for phone lookups
+userSchema.index({ phone: 1 });
+
+const User: Model<IUser> = mongoose.model<IUser>('User', userSchema);
+
+export default User;

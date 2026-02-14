@@ -1,0 +1,331 @@
+const API = "http://localhost:5000";
+
+function parseJwt(token) {
+  return JSON.parse(atob(token.split('.')[1]));
+}
+
+function protectRoute(requiredRole) {
+  const token = localStorage.getItem("token");
+  if (!token) window.location.href = "/login.html";
+
+  const payload = parseJwt(token);
+
+  if (payload.role !== requiredRole) {
+    window.location.href = "/login.html";
+  }
+}
+
+async function login() {
+  const role = document.getElementById("role").value;
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+
+  const endpoint =
+    role === "admin"
+      ? "/auth/admin/login"
+      : "/auth/user/login";
+
+  const res = await fetch(API + endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password })
+  });
+
+  const data = await res.json();
+
+  if (data.success) {
+    localStorage.setItem("token", data.data.token);
+
+    const payload = parseJwt(data.data.token);
+
+    if (payload.role === "admin") {
+      window.location.href = "/admin/dashboard.html";
+    } else {
+      window.location.href = "/user/dashboard.html";
+    }
+  } else {
+    alert(data.error);
+  }
+}
+
+async function register() {
+  const name = document.getElementById("name").value;
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+
+  const res = await fetch(API + "/auth/user/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name, email, password })
+  });
+
+  const data = await res.json();
+
+  if (data.success) {
+    localStorage.setItem("token", data.data.token);
+    window.location.href = "/user/dashboard.html";
+  } else {
+    alert(data.error);
+  }
+}
+
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Login</title>
+</head>
+<body>
+  <h2>Login</h2>
+
+  <select id="role">
+    <option value="user">User</option>
+    <option value="admin">Admin</option>
+  </select>
+
+  <input type="email" id="email" placeholder="Email" />
+  <input type="password" id="password" placeholder="Password" />
+  <button onclick="login()">Login</button>
+
+  <p>Don't have an account? <a href="register.html">Register</a></p>
+
+  <script src="js/auth.js"></script>
+</body>
+</html>
+
+
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Register</title>
+</head>
+<body>
+  <h2>User Register</h2>
+
+  <input type="text" id="name" placeholder="Name" />
+  <input type="email" id="email" placeholder="Email" />
+  <input type="password" id="password" placeholder="Password" />
+
+  <button onclick="register()">Register</button>
+
+  <script src="js/auth.js"></script>
+</body>
+</html>
+
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Admin Dashboard</title>
+</head>
+<body>
+  <h2>Admin Dashboard</h2>
+
+  <div id="conversations"></div>
+
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="../js/socket.js"></script>
+  <script src="../js/chat.js"></script>
+  <script>
+    protectRoute("admin");
+    loadAdminConversations();
+  </script>
+</body>
+</html>
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Conversation</title>
+</head>
+<body>
+  <h2>Conversation</h2>
+
+  <div id="messages"></div>
+
+  <input id="msgInput" />
+  <button onclick="sendAdminReply()">Send</button>
+
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="../js/socket.js"></script>
+  <script src="../js/chat.js"></script>
+</body>
+</html>
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>User Dashboard</title>
+</head>
+<body>
+  <h2>User Dashboard</h2>
+
+  <button onclick="startConversation()">Start / Continue Conversation</button>
+
+  <script>
+    protectRoute("user");
+  </script>
+
+  <script src="../js/auth.js"></script>
+</body>
+</html>
+
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>User Chat</title>
+</head>
+<body>
+  <h2>Chat</h2>
+
+  <div id="messages"></div>
+
+  <input id="msgInput" />
+  <button onclick="sendUserMessage()">Send</button>
+
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+  <script src="../js/socket.js"></script>
+  <script src="../js/chat.js"></script>
+</body>
+</html>
+
+
+let socket = null;
+
+function connectSocket(namespace) {
+  const token = localStorage.getItem("token");
+
+  socket = io(`http://localhost:5000/${namespace}`, {
+    auth: { token }
+  });
+
+  socket.on("connect", () => {
+    console.log("Socket connected");
+  });
+
+  socket.on("disconnect", () => {
+    console.log("Socket disconnected");
+  });
+}
+
+
+
+const API = "http://localhost:5000";
+let currentConversationId = null;
+
+function addMessageToUI(message) {
+  const div = document.createElement("div");
+  div.innerText = message.content;
+  document.getElementById("messages").appendChild(div);
+}
+
+//
+// ================= USER =================
+//
+async function sendUserMessage() {
+  const token = localStorage.getItem("token");
+  const content = document.getElementById("msgInput").value;
+
+  const res = await fetch(API + "/api/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + token
+    },
+    body: JSON.stringify({ message: content })
+  });
+
+  const data = await res.json();
+
+  if (data.success) {
+    currentConversationId = data.data.conversationId;
+    addMessageToUI(data.data.message);
+
+    if (!socket) {
+      connectSocket("user");
+      socket.emit("join-conversation", currentConversationId);
+
+      socket.on("admin-reply", (data) => {
+        addMessageToUI(data.message);
+      });
+    }
+  }
+}
+
+//
+// ================= ADMIN =================
+//
+async function loadAdminConversations() {
+  const token = localStorage.getItem("token");
+
+  connectSocket("admin");
+
+  socket.on("new-message", (data) => {
+    console.log("New message:", data);
+  });
+
+  const res = await fetch(API + "/api/conversations", {
+    headers: {
+      "Authorization": "Bearer " + token
+    }
+  });
+
+  const data = await res.json();
+
+  const container = document.getElementById("conversations");
+
+  data.data.conversations.forEach(conv => {
+    const div = document.createElement("div");
+    div.innerText = conv._id;
+    div.onclick = () => openConversation(conv._id);
+    container.appendChild(div);
+  });
+}
+
+async function openConversation(id) {
+  currentConversationId = id;
+
+  socket.emit("join-conversation", id);
+
+  const token = localStorage.getItem("token");
+
+  const res = await fetch(`${API}/api/conversations/${id}/messages`, {
+    headers: { "Authorization": "Bearer " + token }
+  });
+
+  const data = await res.json();
+
+  const messagesDiv = document.getElementById("messages");
+  messagesDiv.innerHTML = "";
+
+  data.data.messages.forEach(msg => addMessageToUI(msg));
+}
+
+async function sendAdminReply() {
+  const token = localStorage.getItem("token");
+  const content = document.getElementById("msgInput").value;
+
+  await fetch(`${API}/api/conversations/${currentConversationId}/reply`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer " + token
+    },
+    body: JSON.stringify({ message: content })
+  });
+}
+
+
+

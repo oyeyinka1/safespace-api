@@ -1,86 +1,68 @@
-import { Request, Response } from 'express';
-import User from '../models/User';
-import Conversation from '../models/Conversation';
-import Message from '../models/Message';
-import { AuthRequest } from '../types';
-import logger from '../utils/logger';
+import { Response } from "express";
+import Conversation from "../models/Conversation";
+import Message from "../models/Message";
+import User from "../models/User";
+import { AuthRequest } from "../types";
+import logger from "../utils/logger";
 
-export const submitMessage = async (req: Request, res: Response): Promise<void> => {
+export const submitMessage = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
   try {
-    const { name, phone, email, message } = req.body;
+    const { message } = req.body;
+    const userId = req.user!.id;
 
-    // Find or create user
-    let user = await User.findOne({ phone });
-
-    if (!user) {
-      user = await User.create({
-        name,
-        phone,
-        email: email || undefined,
+    if (!message) {
+      res.status(400).json({
+        success: false,
+        error: "Message content is required",
       });
-      logger.info(`New user created: ${user._id}`);
-    } else {
-      // Update user info if provided
-      user.name = name;
-      if (email) user.email = email;
-      await user.save();
+      return;
     }
 
-    // Find or create conversation
+    // Find active conversation
     let conversation = await Conversation.findOne({
-      userId: user._id.toString(),
-      status: { $in: ['active', 'resolved'] },
+      userId,
+      status: { $in: ["active", "resolved"] },
     });
 
+    // Create if none exists
     if (!conversation) {
       conversation = await Conversation.create({
-        userId: user._id.toString(),
+        userId,
+        status: "active",
         lastMessageAt: new Date(),
-        unreadCount: 1,
-        status: 'active',
+        unreadCount: 0,
       });
-      logger.info(`New conversation created: ${conversation._id}`);
-    } else {
-      // Reopen conversation if it was resolved
-      if (conversation.status === 'resolved') {
-        conversation.status = 'active';
-      }
-      conversation.lastMessageAt = new Date();
-      conversation.unreadCount += 1;
-      await conversation.save();
     }
+
+    // Reopen if resolved
+    if (conversation.status === "resolved") {
+      conversation.status = "active";
+    }
+
+    conversation.lastMessageAt = new Date();
+    conversation.unreadCount += 1;
+    await conversation.save();
 
     // Create message
     const newMessage = await Message.create({
-      conversationId: conversation._id.toString(),
-      sender: 'user',
+      conversationId: conversation._id,
+      sender: "user",
       content: message,
-      userId: user._id.toString(),
+      userId,
       isRead: false,
     });
 
-    logger.info(`Message created: ${newMessage._id} from user: ${user._id}`);
+    logger.info(`User ${userId} sent message ${newMessage._id}`);
 
-    // Emit socket event (handled in socket service)
+    // Emit to admin room
     const io = (req as any).io;
     if (io) {
-      io.to('admin-room').emit('new-message', {
-        conversationId: conversation._id.toString(),
-        message: {
-          _id: newMessage._id,
-          conversationId: newMessage.conversationId,
-          sender: newMessage.sender,
-          content: newMessage.content,
-          userId: newMessage.userId,
-          isRead: newMessage.isRead,
-          createdAt: newMessage.createdAt,
-        },
-        user: {
-          _id: user._id,
-          name: user.name,
-          phone: user.phone,
-          email: user.email,
-        },
+      io.of("/admin").io.to("admin-room").emit("new-message", {
+        conversationId: conversation._id,
+        message: newMessage,
       });
     }
 
@@ -88,23 +70,18 @@ export const submitMessage = async (req: Request, res: Response): Promise<void> 
       success: true,
       data: {
         conversationId: conversation._id,
-        messageId: newMessage._id,
-        user: {
-          _id: user._id,
-          name: user.name,
-          phone: user.phone,
-        },
+        message: newMessage,
       },
-      message: 'Message sent successfully',
     });
   } catch (error: any) {
     logger.error(`Submit message error: ${error.message}`);
     res.status(500).json({
       success: false,
-      error: 'Failed to submit message',
+      error: "Failed to submit message",
     });
   }
 };
+
 
 export const getConversations = async (
   req: AuthRequest,
@@ -170,62 +147,79 @@ export const getConversations = async (
   }
 };
 
+export const getUserConversations = async (
+  req: AuthRequest,
+  res: Response
+): Promise<void> => {
+  try {
+    const userId = req.user!.id;
+
+    const conversations = await Conversation.find({ userId })
+      .sort({ lastMessageAt: -1 })
+      .populate("userId", "name email")
+      .lean();
+
+    res.status(200).json({
+      success: true,
+      data: conversations,
+    });
+  } catch (error: any) {
+    logger.error(`Get user conversations error: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch conversations",
+    });
+  }
+};
+
+
 export const getConversationMessages = async (
   req: AuthRequest,
   res: Response
 ): Promise<void> => {
   try {
     const { conversationId } = req.params;
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 50;
-    const skip = (page - 1) * limit;
+    const { role, id } = req.user!;
 
-    // Verify conversation exists
     const conversation = await Conversation.findById(conversationId);
+
     if (!conversation) {
       res.status(404).json({
         success: false,
-        error: 'Conversation not found',
+        error: "Conversation not found",
       });
       return;
     }
 
-    // Get messages
+    // Ownership check
+    if (role === "user" && conversation.userId.toString() !== id) {
+      res.status(403).json({
+        success: false,
+        error: "Forbidden",
+      });
+      return;
+    }
+
     const messages = await Message.find({ conversationId })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
+      .sort({ createdAt: 1 })
       .lean();
-
-    const total = await Message.countDocuments({ conversationId });
-
-    // Get user details
-    const user = await User.findById(conversation.userId).lean();
 
     res.status(200).json({
       success: true,
       data: {
-        conversation: {
-          ...conversation.toObject(),
-          user,
-        },
-        messages: messages.reverse(), // Reverse to show oldest first
-        pagination: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit),
-        },
+        conversation,
+        messages,
       },
     });
   } catch (error: any) {
     logger.error(`Get messages error: ${error.message}`);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch messages',
+      error: "Failed to fetch messages",
     });
   }
 };
+
 
 export const sendAdminReply = async (
   req: AuthRequest,
@@ -234,68 +228,59 @@ export const sendAdminReply = async (
   try {
     const { conversationId } = req.params;
     const { message } = req.body;
-    const adminId = req.admin!.id;
+    const { role, id: adminId } = req.user!;
 
-    // Verify conversation exists
-    const conversation = await Conversation.findById(conversationId);
-    if (!conversation) {
-      res.status(404).json({
+    if (role !== "admin") {
+      res.status(403).json({
         success: false,
-        error: 'Conversation not found',
+        error: "Admins only",
       });
       return;
     }
 
-    // Create admin message
+    const conversation = await Conversation.findById(conversationId);
+
+    if (!conversation) {
+      res.status(404).json({
+        success: false,
+        error: "Conversation not found",
+      });
+      return;
+    }
+
     const newMessage = await Message.create({
       conversationId,
-      sender: 'admin',
+      sender: "admin",
       content: message,
       adminId,
       isRead: false,
     });
 
-    // Update conversation
     conversation.lastMessageAt = new Date();
     await conversation.save();
 
-    logger.info(`Admin reply sent: ${newMessage._id} to conversation: ${conversationId}`);
+    logger.info(`Admin ${adminId} replied to ${conversationId}`);
 
-    // Get user details for socket emission
-    const user = await User.findById(conversation.userId).lean();
-    console.log("user:", user)
-
-    // Emit socket event to user
     const io = (req as any).io;
     if (io) {
-      io.to(`conversation-${conversationId}`).emit('admin-reply', {
-        message: {
-          _id: newMessage._id,
-          conversationId: newMessage.conversationId,
-          sender: newMessage.sender,
-          content: newMessage.content,
-          adminId: newMessage.adminId,
-          isRead: newMessage.isRead,
-          createdAt: newMessage.createdAt,
-        },
+      io.to(`conversation-${conversationId}`).emit("admin-reply", {
+        message: newMessage,
       });
     }
 
     res.status(201).json({
       success: true,
-      data: {
-        message: newMessage,
-      },
-      message: 'Reply sent successfully',
+      data: newMessage,
     });
   } catch (error: any) {
     logger.error(`Send reply error: ${error.message}`);
     res.status(500).json({
       success: false,
-      error: 'Failed to send reply',
+      error: "Failed to send reply",
     });
   }
 };
+
 
 export const markAsRead = async (
   req: AuthRequest,
@@ -303,47 +288,53 @@ export const markAsRead = async (
 ): Promise<void> => {
   try {
     const { conversationId } = req.params;
+    const { role, id } = req.user!;
 
-    // Verify conversation exists
     const conversation = await Conversation.findById(conversationId);
+
     if (!conversation) {
       res.status(404).json({
         success: false,
-        error: 'Conversation not found',
+        error: "Conversation not found",
       });
       return;
     }
 
-    // Mark all unread messages as read
+    if (role === "user" && conversation.userId.toString() !== id) {
+      res.status(403).json({
+        success: false,
+        error: "Forbidden",
+      });
+      return;
+    }
+
+    const senderToMark = role === "admin" ? "user" : "admin";
+
     await Message.updateMany(
       {
         conversationId,
-        sender: 'user',
+        sender: senderToMark,
         isRead: false,
       },
-      {
-        $set: { isRead: true },
-      }
+      { $set: { isRead: true } }
     );
 
-    // Reset unread count
     conversation.unreadCount = 0;
     await conversation.save();
 
-    logger.info(`Conversation ${conversationId} marked as read`);
-
     res.status(200).json({
       success: true,
-      message: 'Messages marked as read',
+      message: "Messages marked as read",
     });
   } catch (error: any) {
     logger.error(`Mark as read error: ${error.message}`);
     res.status(500).json({
       success: false,
-      error: 'Failed to mark messages as read',
+      error: "Failed to mark messages",
     });
   }
 };
+
 
 export const updateConversationStatus = async (
   req: AuthRequest,
@@ -352,11 +343,20 @@ export const updateConversationStatus = async (
   try {
     const { conversationId } = req.params;
     const { status } = req.body;
+    const { role } = req.user!;
 
-    if (!['active', 'resolved', 'archived'].includes(status)) {
+    if (role !== "admin") {
+      res.status(403).json({
+        success: false,
+        error: "Admins only",
+      });
+      return;
+    }
+
+    if (!["active", "resolved", "archived"].includes(status)) {
       res.status(400).json({
         success: false,
-        error: 'Invalid status. Must be: active, resolved, or archived',
+        error: "Invalid status",
       });
       return;
     }
@@ -370,23 +370,20 @@ export const updateConversationStatus = async (
     if (!conversation) {
       res.status(404).json({
         success: false,
-        error: 'Conversation not found',
+        error: "Conversation not found",
       });
       return;
     }
 
-    logger.info(`Conversation ${conversationId} status updated to ${status}`);
-
     res.status(200).json({
       success: true,
       data: conversation,
-      message: 'Status updated successfully',
     });
   } catch (error: any) {
     logger.error(`Update status error: ${error.message}`);
     res.status(500).json({
       success: false,
-      error: 'Failed to update status',
+      error: "Failed to update status",
     });
   }
 };

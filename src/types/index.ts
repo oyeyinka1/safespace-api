@@ -43,12 +43,16 @@ export interface IConversation {
   updatedAt: Date;
 }
 
-export interface AuthRequest extends Request {
-  admin?: {
-    id: string;
-    email: string;
-  };
+export interface AuthUserPayload {
+  id: string;
+  email: string;
+  role: "user" | "admin";
 }
+
+export interface AuthRequest extends Request {
+  user?: AuthUserPayload;
+}
+
 
 export interface JWTPayload extends JwtPayload {
   id: string;

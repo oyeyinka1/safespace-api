@@ -11,23 +11,6 @@ export const loginValidation = [
 ];
 
 export const submitMessageValidation = [
-  body('name')
-    .trim()
-    .notEmpty()
-    .withMessage('Name is required')
-    .isLength({ max: 100 })
-    .withMessage('Name cannot exceed 100 characters'),
-  body('phone')
-    .trim()
-    .notEmpty()
-    .withMessage('Phone is required')
-    .matches(/^[\d\s\+\-\(\)]+$/)
-    .withMessage('Please provide a valid phone number'),
-  body('email')
-    .optional()
-    .isEmail()
-    .normalizeEmail()
-    .withMessage('Please provide a valid email'),
   body('message')
     .trim()
     .notEmpty()

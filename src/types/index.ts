@@ -43,20 +43,18 @@ export interface IConversation {
   updatedAt: Date;
 }
 
-export interface AuthUserPayload {
-  id: string;
+export interface AuthRequest extends Request {
+  user?: {id: string;
   email: string;
   role: "user" | "admin";
-}
-
-export interface AuthRequest extends Request {
-  user?: AuthUserPayload;
+  }
 }
 
 
 export interface JWTPayload extends JwtPayload {
   id: string;
   email: string;
+  role: "user" | "admin";
 }
 
 export interface PaginationQuery {

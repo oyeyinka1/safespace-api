@@ -4,7 +4,7 @@ import { AuthRequest, JWTPayload } from '../types';
 import Admin from '../models/Admin';
 import logger from '../utils/logger';
 
-export const authenticateAdmin = async (
+export const authenticate = async (
   req: AuthRequest,
   res: Response,
   next: NextFunction
@@ -21,7 +21,7 @@ export const authenticateAdmin = async (
       return;
     }
 
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+    const token = authHeader.split(" ")[1]
 
     if (!token) {
       res.status(401).json({
@@ -47,27 +47,11 @@ export const authenticateAdmin = async (
     // Check if admin still exists and is active
     const admin = await Admin.findById(decoded.id);
 
-    if (!admin) {
-      res.status(401).json({
-        success: false,
-        error: 'Admin account not found',
-      });
-      return;
+    req.user = {
+      id: decoded.id,
+      email: decoded.email,
+      role: decoded.role
     }
-
-    if (!admin.isActive) {
-      res.status(401).json({
-        success: false,
-        error: 'Admin account is deactivated',
-      });
-      return;
-    }
-
-    // Attach admin info to request
-    req.admin = {
-      id: admin._id.toString(),
-      email: admin.email,
-    };
 
     next();
   } catch (error: any) {

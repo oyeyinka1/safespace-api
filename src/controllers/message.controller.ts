@@ -60,7 +60,7 @@ export const submitMessage = async (
     // Emit to admin room
     const io = (req as any).io;
     if (io) {
-      io.of("/admin").io.to("admin-room").emit("new-message", {
+      io.of("/admin").to("admin-room").emit("new-message", {
         conversationId: conversation._id,
         message: newMessage,
       });

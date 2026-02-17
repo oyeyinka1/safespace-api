@@ -8,7 +8,7 @@ import Conversation from "../models/Conversation";
 export const initializeSocket = (server: HTTPServer): SocketIOServer => {
   const io = new SocketIOServer(server, {
     cors: {
-      origin: ["http://localhost:5500", "http://127.0.0.1:5500"],
+      origin: ["http://localhost:5500", "http://127.0.0.1:5500", "https://safespace-daily.vercel.app"],
       methods: ["GET", "POST"],
       credentials: true,
     },

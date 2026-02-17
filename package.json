@@ -2,7 +2,7 @@
   "name": "safespace-api",
   "version": "1.0.0",
   "description": "Production-ready messaging platform backend",
-  "main": "dist/server.js",
+  "main": "dist/index.js",
   "scripts": {
     "start": "node dist/index.js",
     "dev": "nodemon ./index.ts",

@@ -1,24 +1,22 @@
-import express from 'express';
-import { login, getProfile } from '../controllers/auth.controller';
-import { authenticateAdmin } from '../middleware/auth.middleware';
-import { validate } from '../middleware/validation.middleware';
-import { authLimiter } from '../middleware/rateLimiter.middleware';
-import { loginValidation } from '../utils/validators';
+import express from "express";
+import {
+  adminLogin,
+  userRegister,
+  userLogin,
+  getProfile,
+} from "../controllers/auth.controller";
+import { authenticate } from "../middleware/auth.middleware";
 
 const router = express.Router();
 
-/**
- * @route   POST /api/auth/login
- * @desc    Admin login
- * @access  Public
- */
-router.post('/login', authLimiter, validate(loginValidation), login);
+// ================= USER =================
+router.post("/user/register", userRegister);
+router.post("/user/login", userLogin);
 
-/**
- * @route   GET /api/auth/profile
- * @desc    Get admin profile
- * @access  Private (Admin)
- */
-router.get('/profile', authenticateAdmin, getProfile);
+// ================= ADMIN =================
+router.post("/admin/login", adminLogin);
+
+// ================= COMMON =================
+router.get("/profile", authenticate, getProfile);
 
 export default router;

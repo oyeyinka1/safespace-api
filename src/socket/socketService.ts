@@ -8,7 +8,7 @@ import Conversation from "../models/Conversation";
 export const initializeSocket = (server: HTTPServer): SocketIOServer => {
   const io = new SocketIOServer(server, {
     cors: {
-      origin: "http://localhost:3000",
+      origin: ["http://localhost:5500", "http://127.0.0.1:5500", "https://safespace-daily.vercel.app"],
       methods: ["GET", "POST"],
       credentials: true,
     },
@@ -16,32 +16,46 @@ export const initializeSocket = (server: HTTPServer): SocketIOServer => {
     pingInterval: 25000,
   });
 
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret) {
+    throw new Error("JWT_SECRET not configured");
+  }
+
+  const authenticateSocket = (expectedRole: "admin" | "user") => {
+    return (socket: Socket, next: any) => {
+      try {
+        const token = socket.handshake.auth?.token;
+
+        if (!token) {
+          return next(new Error("Authentication error: No token provided"));
+        }
+
+        const decoded = jwt.verify(token, jwtSecret) as JWTPayload;
+
+        if (decoded.role !== expectedRole) {
+          return next(new Error("Authorization error: Invalid role"));
+        }
+
+        (socket as any).user = {
+          id: decoded.id,
+          email: decoded.email,
+          role: decoded.role,
+        };
+
+        next();
+      } catch (error) {
+        next(new Error("Authentication error: Invalid token"));
+      }
+    };
+  };
+
   // Admin namespace
   const adminNamespace = io.of("/admin");
 
-  adminNamespace.use((socket, next) => {
-    const token = socket.handshake.auth.token;
-
-    if (!token) {
-      return next(new Error("Authentication error: No token provided"));
-    }
-
-    try {
-      const jwtSecret = process.env.JWT_SECRET;
-      if (!jwtSecret) {
-        return next(new Error("Server configuration error"));
-      }
-
-      const decoded = jwt.verify(token, jwtSecret) as JWTPayload;
-      (socket as any).adminId = decoded.id;
-      next();
-    } catch (error) {
-      next(new Error("Authentication error: Invalid token"));
-    }
-  });
+  adminNamespace.use(authenticateSocket("admin"));
 
   adminNamespace.on("connection", (socket: Socket) => {
-    const adminId = (socket as any).adminId;
+    const adminId = (socket as any).user.id;
     logger.info(`Admin connected: ${adminId} (Socket ID: ${socket.id})`);
 
     // Join admin room to receive all new messages
@@ -86,38 +100,16 @@ export const initializeSocket = (server: HTTPServer): SocketIOServer => {
 
   // User namespace (public)
   const userNamespace = io.of("/user");
+  
+  userNamespace.use(authenticateSocket("user"));
 
   userNamespace.on("connection", (socket: Socket) => {
-    userNamespace.use((socket, next) => {
-      const token = socket.handshake.auth.token;
+    const userId = (socket as any).user.id;
 
-      if (!token) {
-        return next(new Error("Authentication error"));
-      }
-
-      try {
-        const decoded = jwt.verify(
-          token,
-          process.env.JWT_SECRET!
-        ) as JWTPayload;
-
-        if (decoded.role !== "user") {
-          return next(new Error("Unauthorized"));
-        }
-
-        (socket as any).userId = decoded.id;
-        next();
-      } catch (err) {
-        next(new Error("Invalid token"));
-      }
-    });
-
-    logger.info(`User connected (Socket ID: ${socket.id})`);
+    logger.info(`User connected ${userId}`);
 
     // Join conversation room
     socket.on("join-conversation", async (conversationId: string) => {
-      const userId = (socket as any).userId;
-
       const conversation = await Conversation.findById(conversationId);
 
       if (!conversation) return;

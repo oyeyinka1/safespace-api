@@ -1,5 +1,5 @@
-import { Request } from 'express';
-import { JwtPayload } from 'jsonwebtoken';
+import { Request } from "express";
+import { JwtPayload } from "jsonwebtoken";
 
 export interface IAdmin {
   _id: string;
@@ -24,7 +24,7 @@ export interface IUser {
 export interface IMessage {
   _id: string;
   conversationId: string;
-  sender: 'user' | 'admin';
+  sender: "user" | "admin";
   content: string;
   userId?: string;
   adminId?: string;
@@ -38,18 +38,20 @@ export interface IConversation {
   userId: string;
   lastMessageAt: Date;
   unreadCount: number;
-  status: 'active' | 'resolved' | 'archived';
+  status: "active" | "resolved" | "archived";
   createdAt: Date;
   updatedAt: Date;
 }
 
-export interface AuthRequest extends Request {
-  user?: {id: string;
-  email: string;
-  role: "user" | "admin";
-  }
+export interface AuthRequest<
+  P = any,           // Params
+  ResBody = any,     // Response Body
+  ReqBody = any,     // Request Body
+  ReqQuery = any     // Query
+> extends Request<P, ResBody, ReqBody, ReqQuery> {
+  user?: { id: string; email: string; role: "user" | "admin" };
+  io?: any; 
 }
-
 
 export interface JWTPayload extends JwtPayload {
   id: string;
@@ -78,7 +80,7 @@ export interface SocketData {
 export interface MessageData {
   conversationId: string;
   content: string;
-  sender: 'user' | 'admin';
+  sender: "user" | "admin";
   userId?: string;
   adminId?: string;
 }

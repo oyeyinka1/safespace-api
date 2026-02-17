@@ -43,14 +43,8 @@ export interface IConversation {
   updatedAt: Date;
 }
 
-export interface AuthRequest<
-  P = any,           // Params
-  ResBody = any,     // Response Body
-  ReqBody = any,     // Request Body
-  ReqQuery = any     // Query
-> extends Request<P, ResBody, ReqBody, ReqQuery> {
+export interface AuthRequest extends Request {
   user?: { id: string; email: string; role: "user" | "admin" };
-  io?: any; 
 }
 
 export interface JWTPayload extends JwtPayload {
